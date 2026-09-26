@@ -1,0 +1,10 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vercel/
+.streamlit/secrets.toml
+weather.db
+NOTE.txt
