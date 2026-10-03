@@ -23,9 +23,18 @@ Không đặt `OPENWEATHER_API_KEY` ở frontend: Streamlit chỉ gọi backend,
 
 ## 1. Chạy local
 
+- Vào repo https://github.com/datpq-alpha/Bai11 và fork về tài khoản cá nhân
+- Vào trang GitHub cá nhân và coppy link repo của mình, ví dụ: https://github.com/<tk của em>/Bai11.git
+- Mở CMD gõ lần lượt các lệnh:
+```
+cd Desktop
+git clone https://github.com/<tk của em>/Bai11.git Bai11
+```
+- Sau đó, repo Bai11 trên trang cá nhân đã được đồng bộ url về repo Bai11 trên máy.
+
 Mở Terminal tại thư mục `Bai11`.
 
-Windows PowerShell:
+Windows PowerShell (chạy từng lệnh một):
 
 ```powershell
 python -m venv .venv
@@ -33,6 +42,7 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 python -m pip install -r frontend/requirements.txt
 Copy-Item .env.example .env
+Nếu PowerShell chặn script, chạy một lần Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser .
 ```
 
 macOS/Linux:
