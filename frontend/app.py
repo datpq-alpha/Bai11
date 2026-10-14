@@ -31,6 +31,14 @@ def read_setting(name: str, default: str = "") -> str:
 API_URL = read_setting("API_URL", "http://localhost:8000").rstrip("/")
 GEMINI_API_KEY = read_setting("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-2.5-flash-lite"
+SYSTEM_INSTRUCTION = (
+    "Bạn là trợ lý thời tiết thân thiện dành cho học sinh THCS. "
+    "Hãy trả lời ngắn gọn bằng tiếng Việt. Khi người dùng hỏi "
+    "thời tiết hiện tại hoặc muốn xem, lưu, xóa thành phố yêu "
+    "thích, phải dùng công cụ MCP phù hợp và dựa trên kết quả "
+    "công cụ; không tự bịa dữ liệu thời tiết. Nếu yêu cầu chưa "
+    "rõ tên thành phố, hãy hỏi lại."
+)
 
 
 class BackendResponseError(RuntimeError):
@@ -84,7 +92,7 @@ def chat_contents(messages: list[dict]) -> list[types.Content]:
 
 
 async def ask_weather_assistant(messages: list[dict]) -> str:
-    """Kết nối MCP server và để Gemini tự gọi công cụ khi cần."""
+    """Kết nối MCP server và thực hiện vòng function calling với Gemini."""
     child_environment = os.environ.copy()
     child_environment["API_URL"] = API_URL
 
@@ -97,30 +105,93 @@ async def ask_weather_assistant(messages: list[dict]) -> str:
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
             await session.initialize()
+            mcp_tools = (await session.list_tools()).tools
+            gemini_tool = types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(
+                        name=tool.name,
+                        description=tool.description or "",
+                        parameters_json_schema=tool.inputSchema,
+                    )
+                    for tool in mcp_tools
+                ]
+            )
 
             async with genai.Client(api_key=GEMINI_API_KEY).aio as client:
-                response = await client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=chat_contents(messages),
-                    # Dùng dict thay vì GenerateContentConfig: google-genai 2.x
-                    # deep-copy model config và không pickle được Future nằm trong
-                    # MCP ClientSession.
-                    config={
-                        "system_instruction": (
-                            "Bạn là trợ lý thời tiết thân thiện dành cho học sinh THCS. "
-                            "Hãy trả lời ngắn gọn bằng tiếng Việt. Khi người dùng hỏi "
-                            "thời tiết hiện tại hoặc muốn xem, lưu, xóa thành phố yêu "
-                            "thích, phải dùng công cụ MCP phù hợp và dựa trên kết quả "
-                            "công cụ; không tự bịa dữ liệu thời tiết. Nếu yêu cầu chưa "
-                            "rõ tên thành phố, hãy hỏi lại."
-                        ),
-                        "temperature": 0.3,
-                        "tools": [session],
-                        "automatic_function_calling": {"maximum_remote_calls": 6},
-                    },
+                contents = chat_contents(messages)
+                config = types.GenerateContentConfig(
+                    system_instruction=SYSTEM_INSTRUCTION,
+                    temperature=0.3,
+                    tools=[gemini_tool],
+                    automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ),
                 )
 
-    return response.text or "Mình chưa tạo được câu trả lời. Em hãy thử hỏi lại nhé."
+                for _ in range(6):
+                    response = await client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=contents,
+                        config=config,
+                    )
+
+                    if response.text:
+                        return response.text
+
+                    function_calls = response.function_calls or []
+                    if not function_calls:
+                        contents.append(
+                            types.Content(
+                                role="user",
+                                parts=[
+                                    types.Part.from_text(
+                                        text=(
+                                            "Hãy trả lời câu hỏi ban đầu bằng một câu "
+                                            "tiếng Việt rõ ràng dựa trên dữ liệu đã có."
+                                        )
+                                    )
+                                ],
+                            )
+                        )
+                        final_response = await client.models.generate_content(
+                            model=GEMINI_MODEL,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_INSTRUCTION,
+                                temperature=0.3,
+                                automatic_function_calling=(
+                                    types.AutomaticFunctionCallingConfig(disable=True)
+                                ),
+                            ),
+                        )
+                        return final_response.text or (
+                            "Mình chưa tạo được câu trả lời. Em hãy thử hỏi lại nhé."
+                        )
+
+                    contents.append(response.candidates[0].content)
+                    result_parts = []
+                    for function_call in function_calls:
+                        try:
+                            result = await session.call_tool(
+                                function_call.name,
+                                arguments=dict(function_call.args or {}),
+                            )
+                            payload = result.model_dump(
+                                mode="json", by_alias=True, exclude_none=True
+                            )
+                        except Exception as error:
+                            payload = {"error": str(error)}
+
+                        result_parts.append(
+                            types.Part.from_function_response(
+                                name=function_call.name,
+                                response={"result": payload},
+                            )
+                        )
+
+                    contents.append(types.Content(role="user", parts=result_parts))
+
+    return "Mình chưa tạo được câu trả lời. Em hãy thử hỏi lại nhé."
 
 st.set_page_config(page_title="Weather Cloud", page_icon="☁️")
 st.title("☁️ Weather App trên Cloud")
