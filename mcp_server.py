@@ -20,10 +20,28 @@ mcp = FastMCP("weather-assistant-tools")
 
 def response_data(response: requests.Response):
     """Đổi response của backend thành dữ liệu dễ hiểu cho mô hình."""
+    content_type = response.headers.get("content-type", "").lower()
+    if "application/json" not in content_type:
+        hint = (
+            "API_URL đang dẫn tới trang đăng nhập của Vercel. "
+            "Hãy tắt Deployment Protection cho Production và dùng domain Production."
+            if "vercel.com/login" in response.url
+            else "Backend không trả về JSON. Hãy kiểm tra lại API_URL."
+        )
+        return {
+            "success": False,
+            "status_code": response.status_code,
+            "error": hint,
+        }
+
     try:
         payload = response.json()
     except ValueError:
-        payload = {}
+        return {
+            "success": False,
+            "status_code": response.status_code,
+            "error": "Backend trả về JSON không hợp lệ.",
+        }
 
     if response.ok:
         return payload

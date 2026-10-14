@@ -33,6 +33,45 @@ GEMINI_API_KEY = read_setting("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-flash-latest"
 
 
+class BackendResponseError(RuntimeError):
+    """Lỗi cấu hình hoặc phản hồi không hợp lệ từ backend."""
+
+
+def payload_detail(payload) -> str:
+    """Lấy thông báo lỗi trong dữ liệu JSON của FastAPI."""
+    return str(payload.get("detail", "")) if isinstance(payload, dict) else ""
+
+
+def require_json(response: requests.Response):
+    """Phát hiện URL sai hoặc Vercel Protection trước khi đọc JSON."""
+    content_type = response.headers.get("content-type", "").lower()
+    if "application/json" not in content_type:
+        if "vercel.com/login" in response.url:
+            raise BackendResponseError(
+                "API_URL đang bị chuyển tới trang đăng nhập Vercel. Hãy tắt "
+                "Deployment Protection cho Production và dùng domain Production."
+            )
+        raise BackendResponseError(
+            "Backend không trả về JSON. Hãy kiểm tra API_URL trong Streamlit Secrets."
+        )
+    try:
+        return response.json()
+    except ValueError as error:
+        raise BackendResponseError("Backend trả về JSON không hợp lệ.") from error
+
+
+def nested_error_details(error: BaseException) -> str:
+    """Bóc lỗi thật bên trong ExceptionGroup/TaskGroup của MCP."""
+    nested = getattr(error, "exceptions", None)
+    if nested:
+        details = " | ".join(nested_error_details(item) for item in nested)
+    else:
+        details = f"{type(error).__name__}: {error}"
+    if GEMINI_API_KEY:
+        details = details.replace(GEMINI_API_KEY, "***")
+    return details
+
+
 def chat_contents(messages: list[dict]) -> list[types.Content]:
     """Đổi lịch sử Streamlit thành định dạng hội thoại của Gemini."""
     return [
@@ -97,11 +136,18 @@ with search_tab:
             response = requests.get(
                 f"{API_URL}/weather", params={"city": city.strip()}, timeout=10
             )
+            payload = require_json(response)
             if response.status_code == 200:
-                st.session_state["weather"] = response.json()
-            else:
+                st.session_state["weather"] = payload
+            elif response.status_code == 404:
                 st.session_state.pop("weather", None)
                 st.error("Không tìm thấy thành phố.")
+            else:
+                st.session_state.pop("weather", None)
+                detail = payload_detail(payload)
+                st.error(detail or f"Backend trả về lỗi {response.status_code}.")
+        except BackendResponseError as error:
+            st.error(str(error))
         except requests.RequestException:
             st.error("Không kết nối được tới backend. Hãy kiểm tra API_URL.")
 
@@ -120,19 +166,32 @@ with search_tab:
                     json={"city_name": data["city"]},
                     timeout=10,
                 )
+                payload = require_json(saved)
                 if saved.status_code == 201:
                     st.success("Đã lưu thành phố.")
                 elif saved.status_code == 409:
                     st.warning("Thành phố đã có trong danh sách.")
                 else:
-                    st.error("Không lưu được thành phố.")
+                    detail = payload_detail(payload)
+                    st.error(detail or f"Backend trả về lỗi {saved.status_code}.")
+            except BackendResponseError as error:
+                st.error(str(error))
             except requests.RequestException:
                 st.error("Không kết nối được tới backend.")
 
 with favorites_tab:
     try:
         response = requests.get(f"{API_URL}/cities", timeout=10)
-        cities = response.json() if response.status_code == 200 else []
+        payload = require_json(response)
+        if response.status_code == 200:
+            cities = payload
+        else:
+            cities = []
+            detail = payload_detail(payload)
+            st.error(detail or f"Backend trả về lỗi {response.status_code}.")
+    except BackendResponseError as error:
+        cities = []
+        st.error(str(error))
     except requests.RequestException:
         cities = []
         st.error("Không kết nối được tới backend.")
@@ -147,10 +206,12 @@ with favorites_tab:
                 deleted = requests.delete(
                     f"{API_URL}/cities/{item['city_name']}", timeout=10
                 )
+                payload = require_json(deleted)
                 if deleted.status_code == 200:
                     st.rerun()
                 else:
-                    st.error("Không xóa được thành phố.")
+                    detail = payload_detail(payload)
+                    st.error(detail or f"Backend trả về lỗi {deleted.status_code}.")
 
 with assistant_tab:
     st.subheader("🤖 Trợ lý thời tiết AI")
@@ -193,7 +254,7 @@ with assistant_tab:
                     except Exception as error:
                         answer = (
                             "Không thể kết nối tới Gemini hoặc MCP server. "
-                            f"Chi tiết: {error}"
+                            f"Chi tiết: {nested_error_details(error)}"
                         )
                     st.markdown(answer)
 

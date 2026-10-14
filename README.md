@@ -120,6 +120,17 @@ Tạo một GitHub repository cho riêng Bài 11 rồi đẩy toàn bộ nội d
    - `https://ten-du-an.vercel.app/docs`
    - `https://ten-du-an.vercel.app/weather?city=Hanoi`
 
+Ba địa chỉ trên phải trả dữ liệu FastAPI/JSON, không được chuyển tới trang đăng nhập
+Vercel. Nếu bị chuyển tới `vercel.com/login`, vào **Project Settings → Deployment
+Protection** và tắt **Vercel Authentication** cho môi trường Production. Sau đó vào
+**Project → Domains**, sao chép domain Production dạng `https://ten-du-an.vercel.app`;
+không dùng URL trang dashboard `vercel.com/...` và không dùng URL preview được bảo vệ.
+
+Nếu `/weather?city=Hanoi` báo OpenWeatherMap từ chối API key, kiểm tra lại
+`OPENWEATHER_API_KEY` trong **Project Settings → Environment Variables**, bảo đảm biến
+được áp dụng cho **Production**, rồi redeploy. API key mới của OpenWeatherMap đôi khi
+cần một khoảng thời gian ngắn mới hoạt động.
+
 Nếu dùng Vercel CLI thay cho giao diện:
 
 ```powershell
@@ -153,6 +164,9 @@ File `frontend/requirements.txt` được đặt cạnh entrypoint để Streaml
    API_URL = "https://ten-du-an.vercel.app"
    GEMINI_API_KEY = "gemini_api_key_that_cua_em"
    ```
+
+   Không thêm `/docs`, `/weather` hoặc dấu `/` cuối URL. Sau khi lưu Secrets, reboot
+   ứng dụng Streamlit để tiến trình đọc cấu hình mới.
 
 5. Chọn phiên bản Python tương thích, sau đó bấm **Deploy**.
 

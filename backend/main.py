@@ -51,11 +51,27 @@ def get_weather(city: str):
     params = {"q": city, "appid": API_KEY, "units": "metric", "lang": "vi"}
     try:
         response = requests.get(WEATHER_URL, params=params, timeout=10)
-    except requests.RequestException:
-        return None
+    except requests.RequestException as error:
+        raise HTTPException(
+            status_code=502,
+            detail="Không kết nối được tới OpenWeatherMap",
+        ) from error
 
-    if response.status_code != 200:
+    if response.status_code == 404:
         return None
+    if response.status_code in (401, 403):
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "OpenWeatherMap từ chối API key. Hãy kiểm tra biến "
+                "OPENWEATHER_API_KEY trên Vercel rồi redeploy Production."
+            ),
+        )
+    if response.status_code != 200:
+        raise HTTPException(
+            status_code=502,
+            detail=f"OpenWeatherMap trả về lỗi {response.status_code}",
+        )
 
     data = response.json()
     return {
