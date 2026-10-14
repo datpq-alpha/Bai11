@@ -100,7 +100,7 @@ Sau khi frontend mở, vào tab **Trợ lý thời tiết AI** và thử:
 
 Tạo một GitHub repository cho riêng Bài 11 rồi đẩy toàn bộ nội dung thư mục này lên. Trước khi push, kiểm tra chắc chắn không có `.env`, `weather.db` hoặc `.streamlit/secrets.toml` trong commit.
 
-`pyproject.toml` chỉ cho Vercel biết FastAPI entrypoint là `backend.main:app`. Không cần chuyển file backend sang thư mục khác.
+`pyproject.toml` khai báo dependency backend và cho Vercel biết FastAPI entrypoint là `backend.main:app`. File `.python-version` chọn Python 3.12 cho quá trình build. Không cần chuyển file backend sang thư mục khác.
 
 ## 3. Deploy backend lên Vercel
 

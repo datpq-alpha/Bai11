@@ -1,3 +1,13 @@
+[project]
+name = "bai11-weather-api"
+version = "1.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "requests>=2.32,<3.0",
+    "python-dotenv>=1.0,<2.0",
+]
+
 [tool.vercel]
 entrypoint = "backend.main:app"
 
