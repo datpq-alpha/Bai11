@@ -102,8 +102,11 @@ async def ask_weather_assistant(messages: list[dict]) -> str:
                 response = await client.models.generate_content(
                     model=GEMINI_MODEL,
                     contents=chat_contents(messages),
-                    config=types.GenerateContentConfig(
-                        system_instruction=(
+                    # Dùng dict thay vì GenerateContentConfig: google-genai 2.x
+                    # deep-copy model config và không pickle được Future nằm trong
+                    # MCP ClientSession.
+                    config={
+                        "system_instruction": (
                             "Bạn là trợ lý thời tiết thân thiện dành cho học sinh THCS. "
                             "Hãy trả lời ngắn gọn bằng tiếng Việt. Khi người dùng hỏi "
                             "thời tiết hiện tại hoặc muốn xem, lưu, xóa thành phố yêu "
@@ -111,12 +114,10 @@ async def ask_weather_assistant(messages: list[dict]) -> str:
                             "công cụ; không tự bịa dữ liệu thời tiết. Nếu yêu cầu chưa "
                             "rõ tên thành phố, hãy hỏi lại."
                         ),
-                        temperature=0.3,
-                        tools=[session],
-                        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                            maximum_remote_calls=6
-                        ),
-                    ),
+                        "temperature": 0.3,
+                        "tools": [session],
+                        "automatic_function_calling": {"maximum_remote_calls": 6},
+                    },
                 )
 
     return response.text or "Mình chưa tạo được câu trả lời. Em hãy thử hỏi lại nhé."
