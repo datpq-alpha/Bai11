@@ -30,7 +30,7 @@ def read_setting(name: str, default: str = "") -> str:
 
 API_URL = read_setting("API_URL", "http://localhost:8000").rstrip("/")
 GEMINI_API_KEY = read_setting("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-flash-latest"
+GEMINI_MODEL = "gemini-2.5-flash-lite"
 
 
 class BackendResponseError(RuntimeError):
