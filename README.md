@@ -6,20 +6,33 @@ Bài 11 giữ lại ứng dụng và phần kiểm thử của Bài 10, đồng 
 
 - Backend FastAPI lên Vercel.
 - Frontend lên Streamlit Community Cloud tại <https://share.streamlit.io>.
+- Thêm tab **Trợ lý thời tiết AI** để trò chuyện tự nhiên với Gemini.
+- Dùng `mcp_server.py` cung cấp công cụ tra cứu và quản lý thành phố cho Gemini.
 - API key và URL backend được cấu hình bằng biến môi trường/secrets, không ghi cứng trong code.
 
 ## Cấu hình hoạt động như thế nào?
 
-Hai giá trị cần cấu hình nằm ở hai dịch vụ khác nhau:
+Ba giá trị cần cấu hình nằm ở hai dịch vụ khác nhau:
 
 | Tên | Nơi sử dụng | Local | Khi deploy |
 |---|---|---|---|
 | `OPENWEATHER_API_KEY` | Backend | File `.env` | Environment Variables của Vercel |
 | `API_URL` | Frontend | File `.env` | `st.secrets` trên Streamlit Cloud |
+| `GEMINI_API_KEY` | Frontend AI | File `.env` | `st.secrets` trên Streamlit Cloud |
 
 Frontend ưu tiên `st.secrets["API_URL"]`; nếu không có secrets thì mới đọc `API_URL` từ `.env`. Vì thế sau khi Vercel sinh URL, ta chỉ cấu hình URL đó trên Streamlit Cloud, không sửa code và không commit `.env`.
 
 Không đặt `OPENWEATHER_API_KEY` ở frontend: Streamlit chỉ gọi backend, còn backend mới là nơi gọi OpenWeatherMap.
+
+Luồng chat AI:
+
+```text
+Học sinh → Streamlit → Gemini → MCP server → FastAPI trên Vercel
+```
+
+`mcp_server.py` cung cấp bốn công cụ: xem thời tiết, xem danh sách yêu thích, lưu thành phố và xóa thành phố. Streamlit tự khởi chạy MCP server bằng giao tiếp `stdio` khi học sinh gửi câu hỏi; không cần chạy file này bằng một Terminal riêng và cũng không cần deploy thêm một dịch vụ MCP.
+
+Tích hợp MCP trực tiếp trong Google Gen AI SDK hiện là tính năng experimental. File dependency đã giới hạn major version để giảm nguy cơ code bị thay đổi ngoài ý muốn.
 
 ## 1. Chạy local
 
@@ -60,7 +73,10 @@ Sửa `.env`:
 ```env
 OPENWEATHER_API_KEY=api_key_that_cua_em
 API_URL=http://localhost:8000
+GEMINI_API_KEY=gemini_api_key_that_cua_em
 ```
+
+Tạo Gemini API key tại <https://aistudio.google.com/apikey>. Không chia sẻ key và không commit file `.env`.
 
 Chạy trong hai Terminal:
 
@@ -73,6 +89,12 @@ python -m streamlit run frontend/app.py
 ```
 
 Chạy test bằng `python -m pytest -v`. Năm test có cách hoàn thiện giống Bài 10.
+
+Sau khi frontend mở, vào tab **Trợ lý thời tiết AI** và thử:
+
+- `Thời tiết Hà Nội hôm nay thế nào?`
+- `Lưu Huế vào danh sách yêu thích.`
+- `Danh sách yêu thích của mình có gì?`
 
 ## 2. Đưa mã nguồn lên GitHub
 
@@ -125,15 +147,18 @@ File `frontend/requirements.txt` được đặt cạnh entrypoint để Streaml
    frontend/app.py
    ```
 
-4. Mở **Advanced settings → Secrets** và nhập URL backend vừa nhận từ Vercel:
+4. Mở **Advanced settings → Secrets** và nhập URL backend vừa nhận từ Vercel cùng Gemini API key:
 
    ```toml
    API_URL = "https://ten-du-an.vercel.app"
+   GEMINI_API_KEY = "gemini_api_key_that_cua_em"
    ```
 
 5. Chọn phiên bản Python tương thích, sau đó bấm **Deploy**.
 
-Không tạo hoặc commit `.streamlit/secrets.toml`. Khi cần đổi backend, vào **App settings → Secrets**, sửa `API_URL` rồi lưu; code không cần thay đổi.
+Không tạo hoặc commit `.streamlit/secrets.toml`. Khi cần đổi backend hoặc Gemini key, vào **App settings → Secrets**, cập nhật giá trị rồi lưu; code không cần thay đổi.
+
+Streamlit Cloud tìm `frontend/requirements.txt` cạnh file `frontend/app.py` và sẽ cài thêm `google-genai` cùng `mcp`. File `mcp_server.py` vẫn nằm ở thư mục gốc của repository để frontend khởi chạy bằng Python hiện tại.
 
 ## 5. Kiểm tra sản phẩm online
 
@@ -141,12 +166,15 @@ Không tạo hoặc commit `.streamlit/secrets.toml`. Khi cần đổi backend, 
 2. Tra cứu `Hanoi` và kiểm tra nhiệt độ.
 3. Nhìn dòng **Backend** trên giao diện, xác nhận đó là URL Vercel chứ không phải localhost.
 4. Thử lưu/xóa thành phố, đồng thời nhớ giới hạn SQLite tạm thời ở trên.
+5. Mở tab **Trợ lý thời tiết AI**, hỏi thời tiết một thành phố và yêu cầu Gemini lưu thành phố đó.
 
 ## Nguồn hướng dẫn chính thức
 
 - [FastAPI trên Vercel](https://vercel.com/docs/frameworks/backend/fastapi)
 - [Quản lý secrets trên Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management)
 - [Tổ chức file cho Streamlit Community Cloud](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/file-organization)
+- [Google Gen AI SDK và MCP](https://googleapis.github.io/python-genai/)
+- [MCP Python SDK](https://py.sdk.modelcontextprotocol.io/v1/)
 
 ## Yêu cầu nộp bài
 
@@ -167,7 +195,7 @@ Repository đã được **fork** vào tài khoản GitHub của em và **clone*
    git status
    ```
 
-   Địa chỉ `origin` phải là repository trong tài khoản GitHub của em. Đảm bảo `.env`, `.vercel`, `.streamlit/secrets.toml`, `weather.db` và API key không được chuẩn bị commit.
+   Địa chỉ `origin` phải là repository trong tài khoản GitHub của em. Đảm bảo `.env`, `.vercel`, `.streamlit/secrets.toml`, `weather.db`, OpenWeather key và Gemini key không được chuẩn bị commit.
 
 3. Thêm bài làm và tạo commit:
 
@@ -192,6 +220,7 @@ Repository đã được **fork** vào tài khoản GitHub của em và **clone*
    - URL backend đã deploy trên Vercel.
    - URL frontend đã deploy trên Streamlit Community Cloud.
    - Ảnh chụp ứng dụng online tra cứu thời tiết thành công.
+   - Ảnh chụp tab Trợ lý thời tiết AI gọi được dữ liệu thật.
    - Ảnh chụp Terminal có kết quả `5 passed`.
 
 Không nộp API key, file `.env`, `weather.db`, thư mục `.venv` hoặc cấu hình secrets.
